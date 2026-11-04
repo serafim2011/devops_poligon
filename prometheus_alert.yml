@@ -1,0 +1,52 @@
+# groups:
+#   - name: prod_alerts
+#     rules:
+#       - alert: ServiceDown
+#         expr: up == 0
+#         for: 2m
+#         labels:
+#           severity: critical
+#         annotations:
+#           summary: "Сервис {{ $labels.instance }} упал"
+#           description: "Сервис {{ $labels.instance }} упал, контейнер не отвечает более чем 2 минуты"
+#       - alert: DiskSpaceLow
+#         expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 15
+#         for: 5m
+#         labels:
+#           severity: warning
+#         annotations:
+#           summary: "Мало места на диске {{ $labels.instance }}"
+#           description: "Свободно менее 15% диска (сейчас {{ $value }}%)"
+#       - alert: OutOfMemory
+#         expr: (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 < 10
+#         for: 2m
+#         labels:
+#           severity: critical
+#         annotations:
+#           summary: "Заканчивается оперативная память на {{ $labels.instance }}!"
+#           description: "Доступно менее 10% RAM (текущий остаток: {{ $value }}%)"
+#       - alert: HighCpuLoad
+#         expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+#         for: 3m
+#         labels:
+#           severity: warning
+#         annotations:
+#           summary: "Высокая нагрузка на CPU ({{ $labels.instance }})"
+#           description: "Процессор загружен более чем на 85% уже 3 минуты подряд (сейчас: {{ $value }}%)"
+#       - alert: PostgresDiskCritical
+#         expr: (node_filesystem_avail_bytes{mountpoint="/var/lib/postgresql/data"} / node_filesystem_size_bytes{mountpoint="/var/lib/postgresql/data"}) * 100 < 5
+#         for: 1m
+#         labels:
+#           severity: critical
+#         annotations:
+#           summary: "Мало места на диске {{ $labels.instance }}"
+#           description: "Свободно менее 5% диска (сейчас {{ $value }}%)"
+#       - alert: HighMemoryUsage
+#         expr: 100 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100) > 80
+#         for: 5m
+#         labels:
+#           severity: warning
+#         annotations:
+#           summary: "Высокая нагрузка на оперативную память ({{ $labels.instance }})"
+#           description: "Процессор загружен более чем на 80% уже 5 минуты подряд (сейчас: {{ $value }}%)"
+

@@ -1,0 +1,101 @@
+name: shop eat
+on:
+  push:
+    branches: ["release", "main"]
+  pull_request:
+    branches: ["release", "main"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+env:
+  REGISTRY: 'ghcr.io'
+  PROJECT_DIR: '/home/admin/analytics_app'
+  API_HEALTH: 'http://localhost:5000/status'
+  SSH_PORT: '2222'
+jobs:
+  build_python_test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false 
+      matrix:
+        python-version: ["3.10","3.12"]
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+    - run: |
+        pip install -r requirements.txt flake8 pytest
+        flake8 .
+        pytest
+  build_docker:
+    needs: ["build_python_test"]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Генерация тегов
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short,prefix=
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  deploy:
+    needs: ["build_docker"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ env.SSH_PORT }}
+          script: |
+            cd ${{ env.PROJECT_DIR }}
+            PREV_COMMIT=$(git rev-parse HEAD)
+            git pull origin ${{ github.ref_name }}
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker compose exec -T api alembic upgrade head
+            echo "Waiting 10s for app startup..."
+            sleep 10
+            if ! curl -f -s ${{ env.API_HEALTH }} > /dev/null; then
+              echo "Healthcheck failed! Rolling back to $PREV_COMMIT..."
+              git checkout $PREV_COMMIT
+              docker compose up -d --remove-orphans
+              exit 1
+            fi
+            docker image prune -f
+            echo "Deploy success!"
+  notify:
+    runs-on: ubuntu-latest
+    needs: ["deploy"]
+    if: always()
+    steps:
+    - name: Send Telegram notification
+      uses: appleboy/telegram-action@v1.0.1
+      with:
+        to: ${{ secrets.TELEGRAM_CHAT_ID }}
+        token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        message: |
+          Проект: ${{ github.repository }}
+          Ветка: ${{ github.ref_name }}
+          Статус деплоя: ${{ job.status }}
+          Автор: ${{ github.actor }}
